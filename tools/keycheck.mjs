@@ -1,7 +1,7 @@
 // Checks a Gemini key against the exact request the app sends. Never prints the key.
 // Usage: node tools/keycheck.mjs [vertex|studio] [model]   (key read from ./.key or GEMINI_KEY)
 import {readFileSync,existsSync} from 'node:fs';
-const api=process.argv[2]||'vertex',model=process.argv[3]||'gemini-3-flash-preview';
+const api=process.argv[2]||'vertex',model=process.argv[3]||'gemini-3.8-flash';
 const key=(process.env.GEMINI_KEY||(existsSync('.key')?readFileSync('.key','utf8'):'')).trim();
 if(!key){console.log('no key: create a file named .key in this folder containing only the key');process.exit(1)}
 console.log(`key: ${key.length} chars, starts with ${key.slice(0,3)}… · api: ${api} · model: ${model}`);
