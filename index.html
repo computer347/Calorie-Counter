@@ -65,9 +65,9 @@ ol{padding-left:18px}ol li{margin-bottom:6px}
 <input type="file" id="imp" accept="application/json" hidden>
 <script>
 // ================= state =================
-const KEY='kcal.v1',LIFTS='mikelifts.v1',DAY=864e5,VERSION='v7'; // bump VERSION on every deploy so the Settings footer shows what the phone is running
+const KEY='kcal.v1',LIFTS='mikelifts.v1',DAY=864e5,VERSION='v8'; // bump VERSION on every deploy so the Settings footer shows what the phone is running
 const defaults=()=>({settings:{key:'',api:'studio',model:'gemini-3.8-flash',margin:10,marginText:5,sex:'m',age:30,height:180,bw:80,activity:1.375,rate:0,protein:1.8,fatPct:30,adaptive:true,addWorkout:true,water:2000,shortcut:'Log Food Calories'},log:{},foods:[],weight:[],water:{}});
-function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s){const d=defaults(),m={...d,...s,settings:{...d.settings,...s.settings}};if(['gemini-2.5-flash','gemini-3-flash-preview'].includes(m.settings.model))m.settings.model=d.settings.model;return m}}catch(e){}return defaults()}
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s){const d=defaults(),m={...d,...s,settings:{...d.settings,...s.settings}};if(['gemini-2.5-flash','gemini-3-flash-preview'].includes(m.settings.model))m.settings.model=d.settings.model;m.settings.key=String(m.settings.key||'').trim();return m}}catch(e){}return defaults()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Storage full')}}
 // Lifts bridge: READ ONLY. Same origin shares localStorage, so weights and session kcal from the gym app appear here. Never written.
 function lifts(){try{return JSON.parse(localStorage.getItem(LIFTS))}catch(e){return null}}
@@ -111,7 +111,7 @@ const apiBase=()=>S.settings.api==='vertex'?'https://aiplatform.googleapis.com/v
 async function gemini(parts){const s=S.settings;if(!s.key)throw new Error('Add your Gemini API key in Settings first.');
  const r=await fetch(`${apiBase()}${encodeURIComponent(s.model)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':s.key},
   body:JSON.stringify({system_instruction:{parts:[{text:SYS}]},contents:[{role:'user',parts}],generationConfig:{response_mime_type:'application/json',response_schema:SCHEMA,temperature:.2}})});
- const j=await r.json();if(!r.ok)throw new Error(j.error?.message||('HTTP '+r.status));
+ const j=await r.json();if(!r.ok)throw new Error(`${j.error?.message||('HTTP '+r.status)} [${s.api==='vertex'?'Vertex':'AI Studio'} · ${s.model} · key ${s.key.length} chars starting ${s.key.slice(0,3)} · ${VERSION}]`);
  const txt=j.candidates?.[0]?.content?.parts?.map(p=>p.text).join('')||'';try{return JSON.parse(txt)}catch(e){throw new Error('Model returned no usable answer')}}
 async function listModels(){if(S.settings.api==='vertex')throw new Error('Vertex keys cannot list models. Type a model name, e.g. gemini-3.8-flash');
  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=100`,{headers:{'x-goog-api-key':S.settings.key}});const j=await r.json();if(!r.ok)throw new Error(j.error?.message||r.status);
@@ -233,7 +233,7 @@ function vSet(){const s=S.settings,L=lifts(),T=target(today());const opt=(v,arr)
  return`<h1>Settings</h1>
  <h2>AI (Gemini)</h2><div class="card"><label class="small muted">Key type</label><select class="f" data-set="api">${opt(s.api,[['studio','AI Studio key (starts with AIza)'],['vertex','Google Cloud / Vertex AI key (starts with AQ.)']])}</select>
  <label class="small muted">API key — stored only on this phone</label><input class="f" type="password" data-set="key" value="${esc(s.key)}" autocomplete="off" placeholder="${s.api==='vertex'?'AQ.…':'AIza…'}">
- <label class="small muted">Model</label><div class="row"><input class="f" list="models" data-set="model" value="${esc(s.model)}" style="margin:0;flex:1">${s.api==='vertex'?'':'<button class="btn" data-act="models">List</button>'}</div><datalist id="models"></datalist>
+ <label class="small muted">Model</label><div class="row"><input class="f" list="models" data-set="model" value="${esc(s.model)}" style="margin:0;flex:1">${s.api==='vertex'?'':'<button class="btn" data-act="models">List</button>'}<button class="btn" data-act="keytest">Test</button></div><datalist id="models"></datalist><p class="small muted" id="keytest" style="margin:6px 0 0"></p>
  <div class="row"><div style="flex:1"><label class="small muted">Margin on photo estimates (%)</label><input class="f" type="number" data-set="margin" value="${s.margin}"></div><div style="flex:1"><label class="small muted">Margin on typed meals (%)</label><input class="f" type="number" data-set="marginText" value="${s.marginText}"></div></div>
  <details style="margin-top:10px"><summary class="small b">Lock the key down</summary><ol class="small muted"><li>Google Cloud Console → APIs &amp; Services → Credentials → open the key.</li><li>Application restrictions → <b>Websites</b> → add <b>${esc(location.origin)}/*</b>. API restrictions: only ${s.api==='vertex'?'the Vertex AI (Agent Platform) API':'the Generative Language API'}.</li><li>Billing → set a budget alert. The key never leaves this phone except to Google.</li></ol></details></div>
  <h2>You</h2><div class="card"><div class="row"><div style="flex:1"><label class="small muted">Sex</label><select class="f" data-set="sex">${opt(s.sex,[['m','Male'],['f','Female']])}</select></div><div style="flex:1"><label class="small muted">Age</label><input class="f" type="number" data-set="age" value="${s.age}"></div></div>
@@ -282,6 +282,7 @@ document.addEventListener('click',async ev=>{const t=ev.target.closest('[data-ta
   case 'water':S.water[day]=Math.max(0,(S.water[day]||0)+ +t.dataset.ml);save();render();break;
   case 'weigh':{const kg=+$('#wkg').value;if(!(kg>20&&kg<400))return;S.weight=S.weight.filter(w=>isoD(w.date)!==day);S.weight.push({date:dayMs(day),kg});save();toast('Weight logged');render();break}
   case 'health':{const n=S.settings.shortcut;if(!n){toast('Set the Shortcut name in Settings');return}location.href='shortcuts://run-shortcut?name='+encodeURIComponent(n)+'&input=text&text='+encodeURIComponent(t.dataset.k);break}
+  case 'keytest':{const el=$('#keytest');el.textContent='Testing…';try{const r=await gemini([{text:'one banana'}]);el.textContent=`Works: ${r.items?.[0]?.name||'answer received'} (${S.settings.model})`}catch(e){el.textContent='Failed: '+e.message}break}
   case 'models':try{const ms=await listModels();$('#models').innerHTML=ms.map(m=>`<option value="${esc(m)}">`).join('');toast(`${ms.length} models — tap the field`)}catch(e){toast(e.message)}break;
   case 'export':share(JSON.stringify(S,null,1),`kcal-backup-${today()}.json`,'application/json');break;
   case 'import':$('#imp').click();break;
