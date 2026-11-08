@@ -65,7 +65,7 @@ ol{padding-left:18px}ol li{margin-bottom:6px}
 <input type="file" id="imp" accept="application/json" hidden>
 <script>
 // ================= state =================
-const KEY='kcal.v1',LIFTS='mikelifts.v1',DAY=864e5;
+const KEY='kcal.v1',LIFTS='mikelifts.v1',DAY=864e5,VERSION='v7'; // bump VERSION on every deploy so the Settings footer shows what the phone is running
 const defaults=()=>({settings:{key:'',api:'studio',model:'gemini-3.8-flash',margin:10,marginText:5,sex:'m',age:30,height:180,bw:80,activity:1.375,rate:0,protein:1.8,fatPct:30,adaptive:true,addWorkout:true,water:2000,shortcut:'Log Food Calories'},log:{},foods:[],weight:[],water:{}});
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s){const d=defaults(),m={...d,...s,settings:{...d.settings,...s.settings}};if(['gemini-2.5-flash','gemini-3-flash-preview'].includes(m.settings.model))m.settings.model=d.settings.model;return m}}catch(e){}return defaults()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Storage full')}}
@@ -249,7 +249,7 @@ function vSet(){const s=S.settings,L=lifts(),T=target(today());const opt=(v,arr)
  <details><summary class="small b">One-time Shortcut setup</summary><ol class="small muted"><li>Shortcuts app → + → name it exactly as above.</li><li>Add action <b>Receive input from Share Sheet / Shortcut input</b> (type Text).</li><li>Add <b>Log Health Sample</b> → type <b>Dietary Energy</b> → value <b>Shortcut Input</b>, unit kcal.</li><li>Tap “Log to Apple Health” on the Today page after your last meal. Allow Health access once.</li></ol></details></div>
  <h2>Data</h2><div class="card"><p class="small muted" style="margin:0 0 10px">${L?`Reading Lifts data from this device (read-only): ${L.sessions.length} sessions, ${L.body.filter(b=>b.weight).length} weigh-ins.`:'Lifts data not found on this device.'}</p>
  <div class="row wrap"><button class="btn sm" data-act="export">Backup JSON</button><button class="btn sm" data-act="import">Restore</button><button class="btn sm" data-act="csv">Export CSV</button><button class="btn sm ghost danger" data-act="wipe">Erase food data</button></div></div>
- <p class="small muted" style="text-align:center;margin-top:20px">Kcal · Fineli (THL, CC BY 4.0) · Open Food Facts (ODbL)</p>`}
+ <p class="small muted" style="text-align:center;margin-top:20px">Kcal ${VERSION} · Fineli (THL, CC BY 4.0) · Open Food Facts (ODbL)</p>`}
 
 // ================= actions =================
 let pendingCode=null;
@@ -290,7 +290,7 @@ document.addEventListener('click',async ev=>{const t=ev.target.closest('[data-ta
  }});
 $('#photo').addEventListener('change',async ev=>{const f=ev.target.files[0];ev.target.value='';if(!f)return;try{aiStart({dataUrl:await shrink(f),code:pendingCode,text:pendingCode?'This is the nutrition label of a packaged product. Read it exactly.':undefined})}catch(e){toast('Could not read the photo')}});
 $('#imp').addEventListener('change',ev=>{const f=ev.target.files[0];ev.target.value='';if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);if(!d.log||!d.settings)throw 0;S={...defaults(),...d};save();toast('Restored');render()}catch(e){alert('Not a valid Kcal backup')}})});
-document.addEventListener('change',ev=>{const k=ev.target.dataset.set;if(!k)return;const el=ev.target;const v=el.type==='checkbox'?el.checked:(el.type==='number'||(el.tagName==='SELECT'&&el.value!==''&&!isNaN(el.value)))?+el.value:el.value;S.settings[k]=v;save();if(el.tagName==='SELECT'||el.type==='checkbox'||el.type==='number')render()});
+document.addEventListener('change',ev=>{const k=ev.target.dataset.set;if(!k)return;const el=ev.target;const v=el.type==='checkbox'?el.checked:(el.type==='number'||(el.tagName==='SELECT'&&el.value!==''&&!isNaN(el.value)))?+el.value:el.value.trim();S.settings[k]=v;save();if(el.tagName==='SELECT'||el.type==='checkbox'||el.type==='number')render()});
 document.addEventListener('keydown',ev=>{if(ev.key!=='Enter')return;if(ev.target.id==='code')lookup(ev.target.value);if(ev.target.id==='aians'||ev.target.id==='aihint')aiAnswer(ev.target.value)});
 function csv(){const rows=[['date','time','meal','name','brand','grams','kcal','protein_g','carbs_g','fat_g','fibre_g','salt_g','source']];Object.keys(S.log).sort().forEach(d=>S.log[d].forEach(e=>rows.push([d,new Date(e.t).toTimeString().slice(0,5),mealName(e.meal),e.name,e.brand,r0(e.g),r0(kcal(e)),r1(mac(e,'p')),r1(mac(e,'c')),r1(mac(e,'f')),r1(mac(e,'fi')),r1(mac(e,'sa')),e.src])));
  rows.push([]);rows.push(['date','weight_kg','source']);allWeights().forEach(w=>rows.push([isoD(w.date),w.kg,w.src]));return rows.map(r=>r.map(v=>/[",\n]/.test(v)?`"${String(v).replace(/"/g,'""')}"`:v).join(',')).join('\n')}
