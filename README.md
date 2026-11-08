@@ -10,7 +10,7 @@ Personal calorie tracker, companion to [lifts](https://github.com/computer347/li
 
 ## Deploy
 
-Push to GitHub, enable Pages on the repo, add the site to the home screen from Safari. Keep it on the same GitHub Pages user site as lifts (e.g. `computer347.github.io/caloriecounter/`) so the shared storage works.
+Push to GitHub, enable Pages on the repo, add the site to the home screen from Safari. Keep it on the same GitHub Pages user site as lifts (e.g. `computer347.github.io/Calorie-Counter/`) so the shared storage works.
 
 ## Files
 
