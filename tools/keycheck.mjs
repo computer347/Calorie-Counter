@@ -1,11 +1,11 @@
 // Checks a Gemini key against the exact request the app sends. Never prints the key.
 // Usage: node tools/keycheck.mjs [vertex|studio] [model]   (key read from ./.key or GEMINI_KEY)
 import {readFileSync,existsSync} from 'node:fs';
-const api=process.argv[2]||'vertex',model=process.argv[3]||'gemini-2.5-flash';
+const api=process.argv[2]||'vertex',model=process.argv[3]||'gemini-3-flash-preview';
 const key=(process.env.GEMINI_KEY||(existsSync('.key')?readFileSync('.key','utf8'):'')).trim();
 if(!key){console.log('no key: create a file named .key in this folder containing only the key');process.exit(1)}
 console.log(`key: ${key.length} chars, starts with ${key.slice(0,3)}… · api: ${api} · model: ${model}`);
-const h=readFileSync('index.html','utf8'),grab=n=>JSON.parse(h.match(new RegExp(`const ${n}=(\{.*?\});\n`,'s'))?.[1]||'null');
+const h=readFileSync('index.html','utf8'),grab=n=>new Function("return "+h.match(new RegExp(`const ${n}=(\{.*?\});\n`,"s"))[1])();
 const SYS=h.match(/const SYS=`([\s\S]*?)`;/)[1],SCHEMA=grab('SCHEMA');
 const base=api==='vertex'?'https://aiplatform.googleapis.com/v1/publishers/google/models/':'https://generativelanguage.googleapis.com/v1beta/models/';
 const r=await fetch(`${base}${model}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
