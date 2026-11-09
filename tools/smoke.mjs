@@ -27,7 +27,7 @@ ok((await text('#main')).includes('+320 gym'),'today target shows gym kcal from 
 ok((await text('#main')).includes('80.4 kg'),'latest weight comes from Lifts');
 await shot('01-today-empty');
 // Search Fineli and add ruisleipä
-await click('[data-act="search"]');await sleep(300);await set('#sq','ruisleip');await sleep(1500);
+await click('[data-act="search"]');await sleep(900);ok((await text('#sres')).includes('Lunch today'),'student lunch menu shown in search');await set('#sq','ruisleip');await sleep(1500);
 const n=await ev(`document.querySelectorAll('#sres .res').length`);ok(n>5,`Fineli search returns results (${n})`);
 ok((await text('#sres')).includes('Ruisleipä'),'Finnish name shown');await shot('02-search');
 await click('#sres .res');await sleep(200);ok((await text('.sheet h3')).startsWith('Ruisleipä'),'food sheet opens');

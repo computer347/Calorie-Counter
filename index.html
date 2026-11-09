@@ -65,8 +65,8 @@ ol{padding-left:18px}ol li{margin-bottom:6px}
 <input type="file" id="imp" accept="application/json" hidden>
 <script>
 // ================= state =================
-const KEY='kcal.v1',LIFTS='mikelifts.v1',DAY=864e5,VERSION='v8'; // bump VERSION on every deploy so the Settings footer shows what the phone is running
-const defaults=()=>({settings:{key:'',api:'studio',model:'gemini-3.8-flash',margin:10,marginText:5,sex:'m',age:30,height:180,bw:80,activity:1.375,rate:0,protein:1.8,fatPct:30,adaptive:true,addWorkout:true,water:2000,shortcut:'Log Food Calories'},log:{},foods:[],weight:[],water:{}});
+const KEY='kcal.v1',LIFTS='mikelifts.v1',DAY=864e5,VERSION='v9'; // bump VERSION on every deploy so the Settings footer shows what the phone is running
+const defaults=()=>({settings:{key:'',api:'studio',model:'gemini-3.8-flash',margin:10,marginText:5,lunch:[1,2,3,5,7,45,73,84],sex:'m',age:30,height:180,bw:80,activity:1.375,rate:0,protein:1.8,fatPct:30,adaptive:true,addWorkout:true,water:2000,shortcut:'Log Food Calories'},log:{},foods:[],weight:[],water:{}});
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s){const d=defaults(),m={...d,...s,settings:{...d.settings,...s.settings}};if(['gemini-2.5-flash','gemini-3-flash-preview'].includes(m.settings.model))m.settings.model=d.settings.model;m.settings.key=String(m.settings.key||'').trim();return m}}catch(e){}return defaults()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Storage full')}}
 // Lifts bridge: READ ONLY. Same origin shares localStorage, so weights and session kcal from the gym app appear here. Never written.
@@ -104,7 +104,7 @@ function target(iso){const s=S.settings,a=s.adaptive&&adaptive();const base=a?a.
 
 // ================= Gemini =================
 const SYS=`You estimate nutrition for a personal calorie tracker. The user lives in Finland: packaging and nutrition labels are in Finnish and Swedish, energy is given in kJ and kcal, decimals use commas, values are per 100 g or 100 ml. Know Nordic foods, dishes and brands (Fazer, Valio, Pirkka, Rainbow, Kotimaista, Arla, Atria, HK, Saarioinen, Oatly) and typical Finnish portion sizes, but handle food from anywhere.
-Rules: Return every distinct food on the plate as its own item with estimated edible weight in grams and nutrition per 100 g. If the photo is a nutrition label or product package, read the printed values exactly, return ONE item named after the product, grams = one serving if stated, otherwise 100. Use cooked weights for cooked food. Portions in photos are usually underestimated: when unsure, pick the larger plausible weight and count oils, butter, sauces and dressings. If a single fact would materially change the result (e.g. milk fat %, how many pieces, dressing or not), ask one short question in "question" while still giving best-guess items; otherwise leave question empty. Set barcode_visible true if a scannable barcode is visible. Understand Finnish and English text; write item names and the question in English unless the user wrote in Finnish.`;
+Rules: Return every distinct food on the plate as its own item with estimated edible weight in grams and nutrition per 100 g. If the photo is a nutrition label or product package, read the printed values exactly, return ONE item named after the product, grams = one serving if stated, otherwise 100. Use cooked weights for cooked food. Portions in photos are usually underestimated: when unsure, pick the larger plausible weight and count oils, butter, sauces and dressings. If a single fact would materially change the result (e.g. milk fat %, how many pieces, dressing or not), ask one short question in "question" while still giving best-guess items; otherwise leave question empty. Set barcode_visible true if a scannable barcode is visible. Finnish student lunches (Kela-subsidised) follow the plate model: half vegetables and salad, a quarter potatoes, rice or pasta, a quarter protein, served on a standard dinner plate; a full tray with salad, a slice of bread with spread and a glass of milk is typically 600–900 kcal. When the user supplies today's menu or kitchen nutrition values, use them: identify the dish from the menu and only estimate grams. Understand Finnish and English text; write item names and the question in English unless the user wrote in Finnish.`;
 const SCHEMA={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{name:{type:'STRING'},grams:{type:'NUMBER'},kcal100:{type:'NUMBER'},protein100:{type:'NUMBER'},carbs100:{type:'NUMBER'},fat100:{type:'NUMBER'},fiber100:{type:'NUMBER'},confidence:{type:'STRING',enum:['high','medium','low']}},required:['name','grams','kcal100','protein100','carbs100','fat100','confidence']}},question:{type:'STRING'},barcode_visible:{type:'BOOLEAN'}},required:['items']};
 // Two key types: AI Studio keys (AIza…) use the Gemini Developer API; Google Cloud keys bound to a service account (AQ.…) only work on the Vertex AI endpoint. Same request body either way.
 const apiBase=()=>S.settings.api==='vertex'?'https://aiplatform.googleapis.com/v1/publishers/google/models/':'https://generativelanguage.googleapis.com/v1beta/models/';
@@ -121,6 +121,8 @@ function shrink(file){return new Promise((res,rej)=>{const img=new Image();img.o
 // AI flow: photo and/or text -> editable item list -> entries
 let ai=null; // {parts, img, res, meal, code}
 async function aiStart({dataUrl,text,code}){const parts=[];if(dataUrl)parts.push({inline_data:{mime_type:'image/jpeg',data:dataUrl.split(',')[1]}});parts.push({text:text||(dataUrl?'What is in this photo? Estimate everything I would eat.':'')});
+ // Lunchtime photo: hand the model today's student-restaurant menu so it can name the dish instead of guessing.
+ const h=new Date().getHours();if(dataUrl&&!code&&h>=10&&h<15){const L=await loadLunch();if(L)parts.push({text:'Today\'s menu at my student restaurants (Aalto, Otaniemi). If the plate matches one of these, use it:\n'+L.restaurants.map(r=>`${r.name}: `+r.dishes.map(dishHint).join('; ')).join('\n')})}
  ai={parts,img:dataUrl,res:null,meal:mealNow(),code,busy:true,err:null};renderAI();
  try{ai.res=await gemini(parts)}catch(e){ai.err=e.message}ai.busy=false;renderAI()}
 async function aiAnswer(ans){if(!ans.trim())return;ai.parts=[...ai.parts,{text:`Your previous estimate: ${JSON.stringify(ai.res)}\nAnswer to your question: ${ans}\nUpdate the estimate.`}];ai.busy=true;ai.err=null;renderAI();
@@ -153,6 +155,14 @@ function openFood(food,entry){const seen={1:1},units=[['g',1],...(food.units||[]
  $('#fg').oninput=$('#fu').onchange=upd;upd();cur={food,entry}}
 let cur=null;
 
+// ================= student lunch (lunch.json, refreshed each weekday morning by a GitHub Action from Kanttiinit + Sodexo) =================
+const LUNCH_REST=[[1,'Kvarkki'],[2,'Tietotekniikantalo'],[3,'Täffä'],[5,'Alvari'],[7,'TUAS'],[45,'Dipoli'],[73,'Mau-kas Nova'],[84,'Menssa']];
+let lunchP=null;
+async function loadLunch(){if(!lunchP)lunchP=fetch('lunch.json').then(r=>r.json()).catch(()=>null);const L=await lunchP;if(!L||L.date!==today())return null;
+ const rs=L.restaurants.filter(r=>(S.settings.lunch||[]).includes(r.id));return rs.length?{date:L.date,restaurants:rs}:null}
+const dishHint=d=>d.title+(d.parts?` [kitchen values per 100 g: ${d.parts.map(p=>`${p.name} ${p.per.k} kcal P${p.per.p} C${p.per.c} F${p.per.f}`).join(', ')}]`:'');
+function lunchText(r,d){return `Student lunch at ${r.name} (Aalto): ${dishHint(d)}. Estimate the main course as served on a standard student-lunch plate. Do not add salad, bread or drink unless I mention them.`}
+
 // ================= search: own foods, Fineli (bundled), Open Food Facts =================
 let fineli=null,offT=null,offRes=[],offWorld=false,q='';
 async function loadFineli(){if(fineli)return fineli;try{fineli=(await (await fetch('fineli.json')).json()).map(r=>({id:'fin:'+r[0],name:r[1],en:r[2],per:{k:r[3],p:r[4],f:r[5],c:r[6],fi:r[7],sa:r[8],su:r[9]},units:r[11],src:'fineli'}))}catch(e){fineli=[]}return fineli}
@@ -164,10 +174,13 @@ function offFood(p,code){const n=p.nutriments||{};let k=n['energy-kcal_100g'];if
 async function offSearch(s,world){const host=world?'world':'fi';const r=await fetch(`https://${host}.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(s)}&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,product_name_fi,brands,nutriments,serving_quantity`);
  const j=await r.json();return(j.products||[]).map(p=>offFood(p,p.code)).filter(Boolean)}
 async function offLookup(code){const r=await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}?fields=product_name,product_name_fi,brands,nutriments,serving_quantity`);if(r.status===404)return null;const j=await r.json();return j.product?offFood(j.product,code):null}
-function openSearch(){q='';offRes=[];offWorld=false;modal(`<h3>Search</h3><input class="f" id="sq" placeholder="ruisleipä, Valio, chicken breast…" autocomplete="off"><div id="sres"></div>`);const i=$('#sq');i.focus();loadFineli().then(renderSearch);
+let lunchNow=null;
+function openSearch(){q='';offRes=[];offWorld=false;modal(`<h3>Search</h3><input class="f" id="sq" placeholder="ruisleipä, Valio, chicken breast…" autocomplete="off"><div id="sres"></div>`);const i=$('#sq');i.focus();loadFineli().then(renderSearch);loadLunch().then(L=>{lunchNow=L;renderSearch()});
  i.oninput=()=>{q=i.value.trim();offRes=[];offWorld=false;renderSearch();clearTimeout(offT);if(q.length>=3)offT=setTimeout(async()=>{try{offRes=await offSearch(q,false)}catch(e){}renderSearch()},700)}}
 function renderSearch(){const el=$('#sres');if(!el)return;const row=(f,src)=>`<div class="res" data-food="${esc(f.id)}"><div class="nm"><div class="b" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</div><div class="small muted">${f.brand?esc(f.brand)+' · ':''}${f.per.k} kcal/100 g · P ${f.per.p} C ${f.per.c} F ${f.per.f}</div></div><span class="src">${src}</span></div>`;
- if(!q){const rec=[...S.foods].sort((a,b)=>b.last-a.last).slice(0,15);el.innerHTML=(rec.length?`<h2>Recent</h2>`:`<p class="muted small">Type to search ${fineli?fineli.length:''} Finnish foods (Fineli), your own foods, and Open Food Facts packaged products.</p>`)+rec.map(f=>row(f,f.src)).join('');_foodMap={};rec.forEach(f=>_foodMap[f.id]=f);return}
+ if(!q){const rec=[...S.foods].sort((a,b)=>b.last-a.last).slice(0,15);
+  const lunch=lunchNow?`<h2>Lunch today · Aalto</h2>`+lunchNow.restaurants.map((r,ri)=>r.dishes.map((d,di)=>`<div class="res" data-lunch="${ri}:${di}"><div class="nm"><div class="b" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.title)}</div><div class="small muted">${esc(r.name)}${d.props.length?' · '+esc(d.props.join(' ')):''}${d.parts?' · kitchen values':''}</div></div><span class="src">ai</span></div>`).join('')).join(''):'';
+  el.innerHTML=lunch+(rec.length?`<h2>Recent</h2>`:`<p class="muted small">Type to search ${fineli?fineli.length:''} Finnish foods (Fineli), your own foods, and Open Food Facts packaged products.</p>`)+rec.map(f=>row(f,f.src)).join('');_foodMap={};rec.forEach(f=>_foodMap[f.id]=f);return}
  const loc=searchLocal(q);el.innerHTML=loc.map(f=>row(f,f.src)).join('')+(offRes.length?`<h2>Packaged${offWorld?' · worldwide':' · Finland'}</h2>`+offRes.map(f=>row(f,'off')).join(''):'')+
   `<div class="row" style="margin-top:10px">${q.length>=3&&!offWorld?`<button class="btn sm ghost" data-act="off-world">Search worldwide</button>`:''}<button class="btn sm ghost" data-act="describe-q">Ask AI about “${esc(q)}”</button></div>`;
  _foodMap={};[...loc,...offRes].forEach(f=>_foodMap[f.id]=f)}
@@ -245,6 +258,8 @@ function vSet(){const s=S.settings,L=lifts(),T=target(today());const opt=(v,arr)
  <label class="row small" style="margin-top:8px"><input type="checkbox" data-set="adaptive" ${s.adaptive?'checked':''}> Adaptive target from intake vs weight once there is enough data</label>
  <label class="small muted" style="margin-top:10px">Water goal ml</label><input class="f" type="number" step="250" data-set="water" value="${s.water}">
  <p class="small muted" style="margin:4px 0 0">Today: ${T.k} kcal · P ${T.p} g · C ${T.c} g · F ${T.f} g${T.adaptive?' (adaptive)':''}</p></div>
+ <h2>Student lunch · Aalto</h2><div class="card"><p class="small muted" style="margin:0 0 8px">Today's menus appear at the top of Search and are handed to the AI with lunchtime photos. Kvarkki and Tietotekniikantalo publish kitchen nutrition per 100 g, which the AI then uses as-is.</p>
+ <div>${LUNCH_REST.map(([id,n])=>`<span class="chip ${(s.lunch||[]).includes(id)?'on':''}" data-act="lunch-toggle" data-id="${id}">${n}</span>`).join('')}</div></div>
  <h2>Apple Health</h2><div class="card"><label class="small muted">Shortcut name</label><input class="f" data-set="shortcut" value="${esc(s.shortcut)}">
  <details><summary class="small b">One-time Shortcut setup</summary><ol class="small muted"><li>Shortcuts app → + → name it exactly as above.</li><li>Add action <b>Receive input from Share Sheet / Shortcut input</b> (type Text).</li><li>Add <b>Log Health Sample</b> → type <b>Dietary Energy</b> → value <b>Shortcut Input</b>, unit kcal.</li><li>Tap “Log to Apple Health” on the Today page after your last meal. Allow Health access once.</li></ol></details></div>
  <h2>Data</h2><div class="card"><p class="small muted" style="margin:0 0 10px">${L?`Reading Lifts data from this device (read-only): ${L.sessions.length} sessions, ${L.body.filter(b=>b.weight).length} weigh-ins.`:'Lifts data not found on this device.'}</p>
@@ -256,6 +271,7 @@ let pendingCode=null;
 document.addEventListener('click',async ev=>{const t=ev.target.closest('[data-tab],[data-act],[data-food],[data-ent],[data-day]');if(!t)return;
  if(t.dataset.tab){tab=t.dataset.tab;render();scrollTo(0,0);return}
  if(t.dataset.food){const f=_foodMap[t.dataset.food];if(f)openFood(f);return}
+ if(t.dataset.lunch){const [ri,di]=t.dataset.lunch.split(':').map(Number),r=lunchNow.restaurants[ri];aiStart({text:lunchText(r,r.dishes[di])});return}
  if(t.dataset.ent){const e=entries(day).find(x=>String(x.id)===t.dataset.ent);if(e)openFood({id:e.fid,name:e.name,brand:e.brand,per:e.per,units:[],src:e.src},e);return}
  if(t.dataset.day){day=t.dataset.day;tab='today';render();scrollTo(0,0);return}
  const a=t.dataset.act;
@@ -280,6 +296,7 @@ document.addEventListener('click',async ev=>{const t=ev.target.closest('[data-ta
   case 'quick':modal(`<h3>Quick add · ${mealName(t.dataset.meal)}</h3><input class="f" id="qn" placeholder="Name (optional)"><div class="row"><input class="f" type="number" inputmode="decimal" id="qk" placeholder="kcal" style="margin:0"><input class="f" type="number" inputmode="decimal" id="qp" placeholder="P g" style="margin:0"><input class="f" type="number" inputmode="decimal" id="qc" placeholder="C g" style="margin:0"><input class="f" type="number" inputmode="decimal" id="qf" placeholder="F g" style="margin:0"></div><button class="btn acc block" style="margin-top:10px" data-act="quick-go" data-meal="${t.dataset.meal}">Add</button>`);$('#qk').focus();break;
   case 'quick-go':{const k=+$('#qk').value;if(!(k>0))return;addEntry({id:'quick',name:$('#qn').value.trim()||'Quick add',per:{k,p:+$('#qp').value||0,c:+$('#qc').value||0,f:+$('#qf').value||0,fi:0,sa:0,su:0},src:'quick'},100,t.dataset.meal);closeModal();render();break}
   case 'water':S.water[day]=Math.max(0,(S.water[day]||0)+ +t.dataset.ml);save();render();break;
+  case 'lunch-toggle':{const id=+t.dataset.id,l=S.settings.lunch||[];S.settings.lunch=l.includes(id)?l.filter(x=>x!==id):[...l,id];save();render();break}
   case 'weigh':{const kg=+$('#wkg').value;if(!(kg>20&&kg<400))return;S.weight=S.weight.filter(w=>isoD(w.date)!==day);S.weight.push({date:dayMs(day),kg});save();toast('Weight logged');render();break}
   case 'health':{const n=S.settings.shortcut;if(!n){toast('Set the Shortcut name in Settings');return}location.href='shortcuts://run-shortcut?name='+encodeURIComponent(n)+'&input=text&text='+encodeURIComponent(t.dataset.k);break}
   case 'keytest':{const el=$('#keytest');el.textContent='Testing…';try{const r=await gemini([{text:'one banana'}]);el.textContent=`Works: ${r.items?.[0]?.name||'answer received'} (${S.settings.model})`}catch(e){el.textContent='Failed: '+e.message}break}
