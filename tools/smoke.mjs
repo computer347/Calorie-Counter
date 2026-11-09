@@ -32,7 +32,7 @@ const n=await ev(`document.querySelectorAll('#sres .res').length`);ok(n>5,`Finel
 ok((await text('#sres')).includes('Ruisleipä'),'Finnish name shown');await shot('02-search');
 await click('#sres .res');await sleep(200);ok((await text('.sheet h3')).startsWith('Ruisleipä'),'food sheet opens');
 const per=+(await text('.sheet p.small')).match(/([0-9]+) kcal/)[1];await set('#fu','35');await set('#fg','2');await sleep(100);ok((await text('#fk')).startsWith(Math.round(per*70/100)+' kcal'),'2 x 35 g uses per-100 g math ('+per+' kcal/100 g)');await shot('03-food');
-await click('[data-act="food-add"]');await sleep(200);ok((await text('#main')).includes('Ruisleipä'),'entry added to today');
+await set('#fm','b');await click('[data-act="food-add"]');await sleep(200);ok((await text('#main')).includes('Ruisleipä'),'entry added to today');
 // Quick add to breakfast
 await click('[data-act="quick"][data-meal="b"]');await sleep(200);await set('#qk','300');await set('#qp','20');await click('[data-act="quick-go"]');await sleep(200);
 ok((await text('#main')).includes(String(Math.round(per*70/100)+300)),'eaten total adds up');
@@ -60,5 +60,5 @@ await click('[data-tab="today"]');await sleep(200);const t2=await text('#main');
 // Lifts storage untouched
 ok(JSON.parse(await ev(`localStorage.getItem('mikelifts.v1')`)).sessions.length===1,'Lifts data untouched');
 if(errors.length){console.log('console errors:',errors);process.exitCode=1}else console.log('no console errors');
-}catch(e){console.log(String(e));process.exitCode=1}
+}catch(e){console.log(String(e));try{await shot('99-failure')}catch(_){}process.exitCode=1}
 ws.close();br.kill();
